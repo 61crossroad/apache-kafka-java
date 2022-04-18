@@ -49,12 +49,16 @@ public class SimpleConsumer {
         log.info("{}", topicInformation);
 
         KafkaConsumer<String, String> consumer = new KafkaConsumer<>(configs);
-//        consumer.subscribe(List.of(TOPIC_NAME));
+        consumer.subscribe(List.of(TOPIC_NAME));
 
+        // RebalanceListener
         RebalanceListener rebalanceListener = new RebalanceListener(consumer);
         consumer.subscribe(List.of(TOPIC_NAME), rebalanceListener);
 
-//        consumer.assign(Collections.singletonList(new TopicPartition(TOPIC_NAME, PARTITION_NUMBER)));
+        // explicit Topic and Partition
+        consumer.assign(Collections.singletonList(new TopicPartition(TOPIC_NAME, PARTITION_NUMBER)));
+
+        // get assigned Partitions
         Set<TopicPartition> assignedTopicPartition = consumer.assignment();
         assignedTopicPartition.forEach(tp -> log.info(tp.toString()));
 
@@ -68,7 +72,7 @@ public class SimpleConsumer {
 //                            new TopicPartition(record.topic(), record.partition()),
 //                            new OffsetAndMetadata(record.offset() + 1, null));
 //                    consumer.commitSync(currentOffset);
-                    
+
                     rebalanceListener.addOffsetToTrack(record.topic(), record.partition(), record.offset());
                 }
 
