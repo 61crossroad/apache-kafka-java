@@ -31,6 +31,7 @@ public class SimpleConsumer {
         configs.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
         configs.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
 
+        // admin API
         Properties adminConfigs = new Properties();
         adminConfigs.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_SERVERS);
         AdminClient admin = AdminClient.create(adminConfigs);
@@ -62,6 +63,10 @@ public class SimpleConsumer {
         Set<TopicPartition> assignedTopicPartition = consumer.assignment();
         assignedTopicPartition.forEach(tp -> log.info(tp.toString()));
 
+        // call wakeup to shutdown
+        ShutdownTread shutdownTread = new ShutdownTread(consumer);
+        Runtime.getRuntime().addShutdownHook(shutdownTread);
+
         try {
             while (true) {
                 ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(1));
@@ -78,6 +83,7 @@ public class SimpleConsumer {
 
                 consumer.commitAsync();
 
+                // with OffsetCommitCallback#onComplete
 //            consumer.commitAsync((offsets, exception) -> {
 //                if (exception != null) {
 //                    log.error("Commit failed for offsets {}", offsets, exception);
@@ -90,6 +96,7 @@ public class SimpleConsumer {
             log.warn("Wakeup consumer");
         } finally {
             consumer.close();
+            admin.close();
         }
     }
 
@@ -120,6 +127,17 @@ public class SimpleConsumer {
 
         public Map<TopicPartition, OffsetAndMetadata> getCurrentOffsets() {
             return currentOffsets;
+        }
+    }
+
+    @RequiredArgsConstructor
+    static class ShutdownTread extends Thread {
+        private final KafkaConsumer<String, String> consumer;
+
+        @Override
+        public void run() {
+            log.info("Shutdown hook");
+            consumer.wakeup();
         }
     }
 }
