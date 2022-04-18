@@ -1,11 +1,9 @@
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.DescribeConfigsResult;
 import org.apache.kafka.clients.admin.TopicDescription;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.common.TopicPartition;
@@ -51,7 +49,11 @@ public class SimpleConsumer {
         log.info("{}", topicInformation);
 
         KafkaConsumer<String, String> consumer = new KafkaConsumer<>(configs);
-        consumer.subscribe(List.of(TOPIC_NAME));
+//        consumer.subscribe(List.of(TOPIC_NAME));
+
+        RebalanceListener rebalanceListener = new RebalanceListener(consumer);
+        consumer.subscribe(List.of(TOPIC_NAME), rebalanceListener);
+
 //        consumer.assign(Collections.singletonList(new TopicPartition(TOPIC_NAME, PARTITION_NUMBER)));
         Set<TopicPartition> assignedTopicPartition = consumer.assignment();
         assignedTopicPartition.forEach(tp -> log.info(tp.toString()));
@@ -62,13 +64,16 @@ public class SimpleConsumer {
 //            Map<TopicPartition, OffsetAndMetadata> currentOffset = new HashMap<>();
                 for (ConsumerRecord<String, String> record : records) {
                     log.info("{}", record);
-//                currentOffset.put(
-//                        new TopicPartition(record.topic(), record.partition()),
-//                        new OffsetAndMetadata(record.offset() + 1, null));
-//                consumer.commitSync(currentOffset);
+//                    currentOffset.put(
+//                            new TopicPartition(record.topic(), record.partition()),
+//                            new OffsetAndMetadata(record.offset() + 1, null));
+//                    consumer.commitSync(currentOffset);
+                    
+                    rebalanceListener.addOffsetToTrack(record.topic(), record.partition(), record.offset());
                 }
 
-                consumer.commitSync();
+                consumer.commitAsync();
+
 //            consumer.commitAsync((offsets, exception) -> {
 //                if (exception != null) {
 //                    log.error("Commit failed for offsets {}", offsets, exception);
@@ -81,6 +86,36 @@ public class SimpleConsumer {
             log.warn("Wakeup consumer");
         } finally {
             consumer.close();
+        }
+    }
+
+    @RequiredArgsConstructor
+    static class RebalanceListener implements ConsumerRebalanceListener {
+
+        private final KafkaConsumer<String, String> consumer;
+        private final Map<TopicPartition, OffsetAndMetadata> currentOffsets = new HashMap<>();
+
+        @Override
+        public void onPartitionsAssigned(Collection<TopicPartition> partitions) {
+            log.warn("Partitions are assigned");
+        }
+
+        @Override
+        public void onPartitionsRevoked(Collection<TopicPartition> partitions) {
+            log.warn("Partitions are revoked");
+            consumer.commitSync(currentOffsets);
+
+            currentOffsets.clear();
+        }
+
+        public void addOffsetToTrack(String topic, int partition, long offset) {
+            currentOffsets.put(
+                    new TopicPartition(topic, partition),
+                    new OffsetAndMetadata(offset + 1, null));
+        }
+
+        public Map<TopicPartition, OffsetAndMetadata> getCurrentOffsets() {
+            return currentOffsets;
         }
     }
 }
